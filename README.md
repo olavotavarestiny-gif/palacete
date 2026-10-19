@@ -10,10 +10,10 @@ A abertura usa duas metades do próprio logótipo, sobre branco, que se afastam 
 
 ```sh
 npm install
-npm run dev
+npm run dev -- --hostname 127.0.0.1 --port 3001
 ```
 
-Abra o endereço indicado no terminal (normalmente `http://localhost:3000`). Para produção:
+Abra `http://127.0.0.1:3001`. O Palace Studio usa separadamente `http://127.0.0.1:3000`. Para produção:
 
 ```sh
 npm run build
@@ -25,7 +25,8 @@ npm start
 - `src/lib/content.ts`: contactos, redes sociais, textos, fotografias e pratos/preços do menu.
 - `src/lib/editorial.ts`: textos da homepage.
 - `src/lib/menu-source.ts`: fonte partilhada pelo menu do dia e pela página `/menu`.
-- `src/lib/forms.ts`: tipos, validação e ponto de ligação ao futuro Palace Manager.
+- `src/lib/forms.ts`: validação e envio dos pedidos de reserva; os outros formulários mantêm a pré-visualização.
+- `src/app/api/reservations/route.ts`: proxy de reservas com validação no servidor e assinatura privada da integração.
 - `src/components/palace-identity.tsx`: fachada oficial e divisória inspirada no logótipo.
 - `src/components/palace-opening.tsx`: abertura breve, dispensável e acessível.
 - `src/components/`: secções, navegação, galeria, formulários e menu digital.
@@ -37,17 +38,21 @@ Rotas: `/`, `/menu` e `/privacidade`. O menu transcreve o material fornecido, da
 
 ## Estado das integrações
 
-Os formulários validam os dados e mostram uma pré-visualização. **Não enviam, guardam nem confirmam reservas ou inscrições.** Não há analytics, base de dados, CRM ou backend de reservas configurado. Os contactos não fornecidos permanecem `null` no ficheiro central.
+O formulário de **reservas está ligado ao backend real do Palace Studio**, no projecto adjacente `../palace studio`. O pedido é validado e guardado como Pendente, associado a um cliente pelo telefone normalizado. A mensagem de recepção aparece apenas depois da gravação. A mesa continua sujeita a confirmação manual.
 
-Para activar os formulários, substituir `prepareSubmission` por uma integração autenticada com validação no servidor e actualizar os estados da interface e a informação de privacidade. Configurar os contactos oficiais e confirmar a oferta do menu antes do lançamento público.
+O navegador envia para `/api/reservations` no próprio website. Esse servidor assina uma chamada para o Studio com `PALACE_RESERVATION_SECRET`, conservando a chave de idempotência em repetições de rede. O segredo nunca é exposto ao navegador. Configurar `PALACE_STUDIO_URL` e o mesmo segredo privado nos dois servidores; os valores locais já estão nos ficheiros `.env.local`, ignorados pelo Git.
+
+Palace Privé e Palace Beach continuam em demonstração, sem guardar inscrições nem enviar comunicações. Não há analytics ou campanhas automáticas. A informação de privacidade foi actualizada para distinguir estes formulários dos pedidos reais de reserva.
+
+A configuração de produção, o protocolo, os limites de abuso, os testes ponta a ponta e a retenção estão documentados em `../palace studio/INTEGRACAO-CRM.md`. Os contactos oficiais que não foram fornecidos continuam `null`.
 
 O domínio público pode ser configurado em `NEXT_PUBLIC_SITE_URL` para os metadados de partilha. Nenhuma publicação ou serviço externo é necessário para executar o projecto localmente.
 
 ## Palace Menu Studio
 
-Não existe uma aplicação Menu Studio neste repositório. Por omissão, a homepage identifica o menu do dia como **pré-visualização demonstrativa**, com a data da carta fornecida. A página `/menu` lê a mesma edição.
+O Studio é uma aplicação separada, em `../palace studio`, com o endpoint público `/api/published-menu`. Sem `PALACE_MENU_FEED_URL` configurado, a homepage identifica o menu do dia como **pré-visualização demonstrativa**, com a data da carta fornecida. A página `/menu` lê a mesma edição.
 
-Quando existir um endpoint público, configurar `PALACE_MENU_FEED_URL` no servidor. O adaptador lê apenas menus publicados e permite revalidar a edição a cada 60 segundos; não envia dados pessoais. O serviço externo deverá fornecer JSON neste formato:
+Na integração local, `PALACE_MENU_FEED_URL` aponta para `http://127.0.0.1:3000/api/published-menu`. Em produção, configurar o endereço HTTPS do mesmo endpoint. O adaptador lê apenas menus publicados e permite revalidar a edição a cada 60 segundos; não envia dados pessoais. O serviço externo deverá fornecer JSON neste formato:
 
 ```json
 {
@@ -66,7 +71,7 @@ Quando existir um endpoint público, configurar `PALACE_MENU_FEED_URL` no servid
 }
 ```
 
-Os itens aceitam `description` e `unit` opcionais. Os valores de `price` são números em Kwanza. Se a configuração estiver ausente, o serviço falhar ou os dados não forem válidos, ambas as páginas mantêm a carta de referência identificada, sem simular uma publicação. O contrato deve ser adaptado à API real do Studio quando estiver disponível.
+Os itens aceitam `description` e `unit` opcionais. Os valores de `price` são números em Kwanza. Se a configuração estiver ausente, o serviço falhar ou os dados não forem válidos, ambas as páginas mantêm a carta de referência identificada, sem simular uma publicação. O endpoint implementado no Studio segue este contrato e só devolve dados do menu, sem contactos ou reservas.
 
 ## Verificação
 
@@ -84,8 +89,8 @@ Os testes de navegador usam o Google Chrome instalado e, por omissão, iniciam u
 2. Manter o framework **Next.js**, a pasta raiz `./`, a instalação `npm ci` e o build `npm run build`. Manter a pasta de saída por defeito do framework.
 3. Publicar. A versão Node.js 24 está definida em `package.json` e `.nvmrc`.
 
-Não são necessárias variáveis de ambiente para a apresentação demonstrativa. O domínio dos metadados de partilha é obtido automaticamente a partir da Vercel. Ao ligar um domínio próprio, pode definir `NEXT_PUBLIC_SITE_URL` com o endereço HTTPS definitivo. `PALACE_MENU_FEED_URL` continua opcional, até existir um endpoint real do Menu Studio.
+Sem variáveis de integração, os pedidos de reserva devolvem uma mensagem de indisponibilidade e não simulam sucesso. O domínio dos metadados de partilha é obtido automaticamente a partir da Vercel. Ao ligar um domínio próprio, pode definir `NEXT_PUBLIC_SITE_URL` com o endereço HTTPS definitivo. `PALACE_MENU_FEED_URL` configura a leitura do menu real; `PALACE_STUDIO_URL` e `PALACE_RESERVATION_SECRET` são necessários para guardar reservas.
 
 A abertura do palácio funciona também em telemóveis com toque. Continua a respeitar a preferência por movimento reduzido e pode ser ignorada. O vídeo, sem áudio e com cerca de 634 KB, só é carregado quando entra no enquadramento. As fotografias usam optimização Next.js e os ficheiros de media têm cache de um dia, com revalidação posterior.
 
-Os formulários continuam em demonstração: publicar o site não activa reservas, inscrições nem envio de dados pessoais.
+Ao publicar, configure HTTPS e as variáveis de integração com o Studio. As reservas são guardadas no backend apenas quando essa ligação estiver configurada e disponível. Privé e Beach mantêm a pré-visualização demonstrativa.

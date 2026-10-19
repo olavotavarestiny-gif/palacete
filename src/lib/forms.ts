@@ -3,6 +3,8 @@ export type PalaceSubmission = {
   kind: FormKind;
   name: string;
   phone: string;
+  email?: string;
+  website?: string;
   date?: string;
   time?: string;
   guests?: string;
@@ -29,9 +31,10 @@ export function validateSubmission(data: PalaceSubmission) {
     ? "Autorize a utilização dos dados para este pedido."
     : "É necessária a sua autorização para receber comunicações.";
   if (data.kind === "reservation") {
-    if (!data.date || data.date < luandaDate()) errors.date = "Escolha a data de hoje ou uma data futura.";
-    if (!data.time) errors.time = "Indique o horário pretendido.";
-    if (!data.guests || Number(data.guests) < 1 || Number(data.guests) > 50) errors.guests = "Indique entre 1 e 50 pessoas.";
+    if (!data.date || !/^\d{4}-\d{2}-\d{2}$/.test(data.date) || Number.isNaN(Date.parse(data.date)) || new Date(data.date).toISOString().slice(0,10) !== data.date || data.date < luandaDate()) errors.date = "Escolha a data de hoje ou uma data futura válida.";
+    if (!data.time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(data.time)) errors.time = "Indique um horário válido.";
+    if (!data.guests || !Number.isInteger(Number(data.guests)) || Number(data.guests) < 1 || Number(data.guests) > 50) errors.guests = "Indique entre 1 e 50 pessoas.";
+    if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) errors.email = "Indique um email válido.";
     if (data.date === luandaDate() && data.time) {
       const now = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Luanda", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
       if (data.time <= now) errors.time = "Escolha um horário futuro (hora de Luanda).";
@@ -42,9 +45,18 @@ export function validateSubmission(data: PalaceSubmission) {
   return errors;
 }
 
-/** Ponto de ligação ao futuro Palace Manager. A demonstração não guarda nem envia dados. */
-export async function prepareSubmission(data: PalaceSubmission): Promise<{ mode: "demo"; data: PalaceSubmission }> {
+/** Reservations are saved through a same-origin server proxy. Other forms remain demonstrations. */
+export async function prepareSubmission(data: PalaceSubmission, requestId?: string): Promise<{ mode: "demo" | "saved"; data: PalaceSubmission; reference?: string }> {
   const errors = validateSubmission(data);
   if (Object.keys(errors).length) throw new Error("Verifique os campos assinalados.");
-  return { mode: "demo", data };
+  if (data.kind !== "reservation") return { mode: "demo", data };
+  let response: Response;
+  try { response = await fetch('/api/reservations', {
+    method:'POST', headers:{'Content-Type':'application/json','Idempotency-Key':requestId || crypto.randomUUID()},
+    body:JSON.stringify(data),
+  }); } catch { throw new Error('Sem ligação. Os seus dados continuam no formulário. Tente novamente.'); }
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Não foi possível enviar o pedido. Tente novamente.');
+  if (result.received !== true || typeof result.reference !== 'string') throw new Error('Não foi possível verificar a recepção do pedido. Tente novamente.');
+  return { mode:'saved', data, reference:result.reference };
 }

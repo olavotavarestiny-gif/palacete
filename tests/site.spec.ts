@@ -25,15 +25,19 @@ for (const width of [360, 390, 430, 768, 1024, 1440]) {
   });
 }
 
-test("Reserva valida dados, preserva a edição e não envia informações", async ({ page }) => {
+test("Reserva valida dados, preserva os campos após falha e só confirma a recepção depois da API", async ({ page }) => {
   await page.goto("/");
-  const mutations: string[] = [];
-  page.on("request", request => { if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method())) mutations.push(request.url()); });
+  const attempts: { key: string | undefined; data: Record<string, unknown> }[] = [];
+  await page.route("**/api/reservations", async route => {
+    attempts.push({ key: route.request().headers()["idempotency-key"], data: route.request().postDataJSON() });
+    if (attempts.length === 1) return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Falha de ligação de demonstração. Tente novamente." }) });
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ received: true, reference: "7cc5772d-dc65-40cf-b8b6-42f0f32f3b13" }) });
+  });
   const reserve = page.getByRole("button", { name: "Reservar mesa", exact: true }).first();
   await reserve.click();
   const dialog = page.getByRole("dialog", { name: "O próximo momento." });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Pré-visualizar pedido" }).click();
+  await dialog.getByRole("button", { name: "Solicitar Reserva", exact: true }).click();
   await expect(dialog.getByText("Indique o seu nome, com pelo menos 2 caracteres.")).toBeVisible();
   await expect(dialog.locator('[name="name"]')).toBeFocused();
   await dialog.getByLabel("O seu nome").fill("Visitante de Demonstração");
@@ -42,12 +46,17 @@ test("Reserva valida dados, preserva a edição e não envia informações", asy
   await dialog.getByLabel("Horário pretendido").fill("20:00");
   await dialog.getByLabel("Número de pessoas").fill("4");
   await dialog.getByRole("checkbox").check();
-  await dialog.getByRole("button", { name: "Pré-visualizar pedido" }).click();
-  await expect(dialog.getByRole("status")).toContainText("Nenhuma reserva foi efectuada.");
-  await dialog.getByRole("button", { name: "Editar dados" }).click();
+  await dialog.getByRole("button", { name: "Solicitar Reserva", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Falha de ligação de demonstração.");
   await expect(dialog.getByLabel("O seu nome")).toHaveValue("Visitante de Demonstração");
   await expect(dialog.getByLabel("Número de pessoas")).toHaveValue("4");
-  expect(mutations).toEqual([]);
+  await expect(dialog.getByRole("status")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Solicitar Reserva", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("Pedido de reserva recebido!");
+  await expect(dialog.getByRole("status")).toContainText("A mesa ainda não está confirmada.");
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0].key).toBe(attempts[1].key);
+  expect(attempts[0].data).toEqual(attempts[1].data);
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
   await expect(reserve).toBeFocused();

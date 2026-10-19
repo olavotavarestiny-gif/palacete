@@ -623,3 +623,5 @@ dialog::backdrop { background: rgb(255 255 255 / 88%); backdrop-filter: blur(6px
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .will-reveal { opacity: 1; transform: none; }
 }
+
+.reservation-honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }

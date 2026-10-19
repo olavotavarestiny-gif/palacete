@@ -1,4 +1,5 @@
 import "server-only";
+import { connection } from "next/server";
 import { menuCategories, type MenuCategory } from "./content";
 
 export type MenuEdition = {
@@ -30,6 +31,8 @@ function isCategory(value: unknown): value is MenuCategory {
 export async function getMenuEdition(): Promise<MenuEdition> {
   const endpoint = process.env.PALACE_MENU_FEED_URL;
   if (!endpoint) return referenceEdition;
+  // Resolve the configured Studio feed at request time, never freeze it into a build.
+  await connection();
   try {
     const url = new URL(endpoint);
     if (!["http:", "https:"].includes(url.protocol)) return referenceEdition;
