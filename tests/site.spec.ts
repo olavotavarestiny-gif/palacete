@@ -210,17 +210,42 @@ for (const width of [360, 390, 430]) {
   });
 }
 
-test("O vídeo espera por ficar visível e pára quando sai do ecrã", async ({ page }) => {
+for (const width of [390, 1440]) {
+  test(`O vídeo inicia automaticamente sem clique a ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/");
+    const video = page.locator(".hero video");
+    await expect(video).toHaveJSProperty("muted", true);
+    await expect(video).toHaveAttribute("playsinline", "");
+    await expect(video).toHaveJSProperty("paused", false);
+    await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(0);
+    const pause = page.locator(".hero").getByRole("button", { name: "Pausar vídeo" });
+    await pause.click();
+    await expect(video).toHaveJSProperty("paused", true);
+    await page.locator("#contactos").scrollIntoViewIfNeeded();
+    await video.scrollIntoViewIfNeeded();
+    await expect(video).toHaveJSProperty("paused", true);
+    await page.locator(".hero").getByRole("button", { name: "Reproduzir vídeo" }).click();
+    await expect(video).toHaveJSProperty("paused", false);
+  });
+}
+
+test("O vídeo carrega antecipadamente, reproduz quando visível e retoma ao regressar", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 430 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto("/", { waitUntil: "networkidle" });
   await expect(page.locator(".palace-opening")).not.toBeVisible();
   const video = page.locator(".hero video");
-  await expect(video).not.toHaveAttribute("src");
+  await expect(video).toHaveAttribute("src", /palace-gastronomia\.mp4$/);
+  await expect(video).toHaveJSProperty("paused", true);
   await page.locator(".hero-media-refined").scrollIntoViewIfNeeded();
   await expect(video).toHaveAttribute("src", /palace-gastronomia\.mp4$/);
   await expect(video).toHaveJSProperty("paused", false);
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect(video).toHaveJSProperty("paused", true);
+  await page.locator(".hero-media-refined").scrollIntoViewIfNeeded();
+  await expect(video).toHaveJSProperty("paused", false);
 });
 
 test("O vídeo permite pedidos parciais e reutilização de cache", async ({ request }) => {

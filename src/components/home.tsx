@@ -29,7 +29,7 @@ export function RevealObserver() {
 function PalaceFilm({ src = site.heroVideo, poster = site.poster, label = "Uma experiência no Palace Lounge", lazy = false }: { src?: string; poster?: string; label?: string; lazy?: boolean }) {
   const video = useRef<HTMLVideoElement>(null);
   const wrapper = useRef<HTMLDivElement>(null);
-  const userPaused = useRef(false);
+  const [userPaused, setUserPaused] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [inView, setInView] = useState(false);
@@ -38,12 +38,12 @@ function PalaceFilm({ src = site.heroVideo, poster = site.poster, label = "Uma e
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
     let visible = false;
-    const allowed = () => !preference.matches && !connection?.saveData && !userPaused.current;
+    const allowed = () => !preference.matches && !connection?.saveData;
+    if (!lazy && allowed()) setEnabled(true);
     const observer = new IntersectionObserver(entries => {
       visible = entries[0].isIntersecting;
       setInView(visible);
-      if (visible && allowed()) { setEnabled(true); void video.current?.play().catch(() => {}); }
-      else video.current?.pause();
+      if (visible && allowed()) setEnabled(true);
     }, { threshold: 0.1 });
     if (wrapper.current) observer.observe(wrapper.current);
     const update = () => {
@@ -53,13 +53,31 @@ function PalaceFilm({ src = site.heroVideo, poster = site.poster, label = "Uma e
     preference.addEventListener("change", update);
     return () => { observer.disconnect(); preference.removeEventListener("change", update); };
   }, [lazy]);
+  useEffect(() => {
+    const player = video.current;
+    if (!player) return;
+    if (!enabled || !inView || userPaused) {
+      player.pause();
+      return;
+    }
+    // Start after React has attached the source, including on iOS Safari.
+    player.muted = true;
+    const play = () => { void player.play().catch(() => {}); };
+    player.addEventListener("canplay", play);
+    play();
+    return () => { player.removeEventListener("canplay", play); };
+  }, [enabled, inView, userPaused]);
   function toggleVideo() {
-    if (playing) { userPaused.current = true; video.current?.pause(); }
-    else { userPaused.current = false; setEnabled(true); void video.current?.play().catch(() => {}); }
+    if (playing) { setUserPaused(true); video.current?.pause(); }
+    else {
+      setUserPaused(false);
+      setEnabled(true);
+      if (enabled) void video.current?.play().catch(() => {});
+    }
   }
   return <div className="palace-film" ref={wrapper}>
     <Image src={poster} alt={label} fill sizes="(max-width: 767px) 100vw, 50vw" preload={!lazy} className="film-poster" />
-    <video ref={video} src={enabled ? src : undefined} poster={poster} muted loop playsInline autoPlay={enabled && inView} preload="none" aria-label={label} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={() => setFailed(true)} />
+    <video ref={video} src={enabled ? src : undefined} poster={poster} muted loop playsInline autoPlay={enabled && inView && !userPaused} preload={lazy ? "none" : "auto"} aria-label={label} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={() => setFailed(true)} />
     {!failed && <button className="film-toggle" onClick={toggleVideo} aria-label={playing ? "Pausar vídeo" : "Reproduzir vídeo"}><Icon name={playing ? "pause" : "play"} width="16" height="16" /></button>}
   </div>;
 }
